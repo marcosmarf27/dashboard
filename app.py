@@ -24,12 +24,13 @@ def create_card(title, value, color="#FFF"):
         f"""
         <div style="
             background-color: {color};
-            padding: 10px;
-            border-radius: 5px;
+            padding: 20px;
+            border-radius: 10px;
             margin: 10px 0px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         ">
-            <h3 style="color: #333; margin-bottom: 0;">{title}</h3>
-            <p style="color: #333; font-size: 24px; font-weight: bold; margin-top: 0;">{value}</p>
+            <h3 style="color: #333; margin-bottom: 0; font-size: 18px;">{title}</h3>
+            <p style="color: #333; font-size: 24px; font-weight: bold; margin-top: 10px;">{value}</p>
         </div>
         """,
         unsafe_allow_html=True
@@ -77,6 +78,10 @@ clientes_url = "https://commitar.com.br/api/1.1/obj/l_clientes"
 # Sidebar para filtros
 st.sidebar.title("Filtros")
 
+# Botão Limpar Filtros no topo da sidebar
+if st.sidebar.button("Limpar Filtros"):
+    st.rerun()
+
 # Buscar dados
 with st.spinner('Carregando dados...'):
     df_caixa = fetch_data(caixa_url)
@@ -110,8 +115,8 @@ if all([df_caixa is not None, df_tipo_mov is not None, df_imoveis is not None, d
     if periodo == "Personalizado":
         min_date = min(df_caixa['data_mov'].dt.date)
         max_date = datetime.now().date()
-        start_date = st.sidebar.date_input("Data inicial", min_date, min_value=min_date, max_value=max_date)
-        end_date = st.sidebar.date_input("Data final", max_date, min_value=min_date, max_value=max_date)
+        start_date = st.sidebar.date_input("Data inicial", min_date, min_value=min_date, max_value=max_date, format="DD/MM/YYYY")
+        end_date = st.sidebar.date_input("Data final", max_date, min_value=min_date, max_value=max_date, format="DD/MM/YYYY")
     else:
         end_date = datetime.now().date()
         if periodo == "Último mês":
@@ -140,13 +145,13 @@ if all([df_caixa is not None, df_tipo_mov is not None, df_imoveis is not None, d
     # Exibir cards com resumo
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        create_card("Entrada", format_currency(entrada_total), "#E8F5E9")
+        create_card("Entrada", format_currency(entrada_total), "#4CAF50")  # Verde para entrada
     with col2:
-        create_card("Saída", format_currency(saida_total), "#FFEBEE")
+        create_card("Saída", format_currency(saida_total), "#F44336")  # Vermelho para saída
     with col3:
-        create_card("Saldo", format_currency(saldo), "#E3F2FD")
+        create_card("Saldo", format_currency(saldo), "#2196F3")  # Azul para saldo
     with col4:
-        create_card("Contratos ativos", str(contratos_ativos), "#FFF3E0")
+        create_card("Contratos ativos", str(contratos_ativos), "#FFA726")  # Laranja para contratos
 
     # Lista de Imóveis
     st.subheader("Resumo por Imóvel")
@@ -172,7 +177,7 @@ if all([df_caixa is not None, df_tipo_mov is not None, df_imoveis is not None, d
     df_mensal = df_caixa_filtered.groupby([df_caixa_filtered['data_mov'].dt.to_period('M'), 'categoria'])['valor'].sum().unstack(fill_value=0)
     df_mensal.index = df_mensal.index.astype(str)
     fig_mensal = go.Figure()
-    fig_mensal.add_trace(go.Bar(x=df_mensal.index, y=df_mensal['entrada'], name='Entrada', marker_color='blue'))
+    fig_mensal.add_trace(go.Bar(x=df_mensal.index, y=df_mensal['entrada'], name='Entrada', marker_color='green'))
     fig_mensal.add_trace(go.Bar(x=df_mensal.index, y=df_mensal['saida'], name='Saída', marker_color='red'))
     fig_mensal.update_layout(barmode='group', title="Faturamento e Despesas Mensais",
                              xaxis_title="Mês", yaxis_title="Valor (R$)")
@@ -230,11 +235,6 @@ if all([df_caixa is not None, df_tipo_mov is not None, df_imoveis is not None, d
 else:
     st.error("Não foi possível carregar todos os dados necessários. Por favor, verifique sua conexão e tente novamente.")
 
-# Botões adicionais
-col1, col2 = st.columns(2)
-with col1:
-    if st.button("Despesas Avulsas"):
-        st.write("Funcionalidade de Despesas Avulsas a ser implementada")
-with col2:
-    if st.button("Limpar Filtros"):
-        st.experimental_rerun()
+# Botão Despesas Avulsas
+if st.sidebar.button("Despesas Avulsas"):
+    st.sidebar.write("Funcionalidade de Despesas Avulsas a ser implementada")
