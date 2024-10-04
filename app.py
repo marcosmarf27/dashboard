@@ -1,36 +1,39 @@
 import streamlit as st
-import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
-from datetime import datetime, timedelta
 import requests
-import locale
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
 
 # Configuração da página
-st.set_page_config(layout="wide", page_title="Dashboard Financeiro e Imobiliário", page_icon="🏠")
+st.set_page_config(layout="wide", page_title="Dashboard Financeiro e Imobiliário")
 
-# Tentar configurar locale para formatação de moeda brasileira
-try:
-    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
-    use_locale = True
-except locale.Error:
-    use_locale = False
-    st.warning("Não foi possível configurar o locale brasileiro. Usando formatação personalizada.")
-
-# Função para formatar valores monetários
+# Função para formatar valores em reais
 def format_currency(value):
-    if use_locale:
-        return locale.currency(value, grouping=True, symbol=None)
-    else:
-        return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    if pd.isna(value):
+        return "R$ 0,00"
+    return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-# Função para aplicar estilo CSS personalizado
-def local_css(file_name):
-    with open(file_name, "r") as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+# Função para formatar datas
+def format_date(date):
+    return date.strftime("%d/%m/%Y")
 
-# Aplicar estilo CSS personalizado
-local_css("style.css")
+# Função para criar um card
+def create_card(title, value, color="#FFF"):
+    st.markdown(
+        f"""
+        <div style="
+            background-color: {color};
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0px;
+        ">
+            <h3 style="color: #333; margin-bottom: 0;">{title}</h3>
+            <p style="color: #333; font-size: 24px; font-weight: bold; margin-top: 0;">{value}</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 @st.cache_data
 def fetch_data(api_url):
@@ -69,6 +72,10 @@ caixa_url = "https://commitar.com.br/api/1.1/obj/I_caixa"
 tipo_mov_url = "https://commitar.com.br/api/1.1/obj/I_tipo_mov"
 imoveis_url = "https://commitar.com.br/api/1.1/obj/I_imoveis"
 contratos_url = "https://commitar.com.br/api/1.1/obj/I_contratos"
+clientes_url = "https://commitar.com.br/api/1.1/obj/l_clientes"
+
+# Sidebar para filtros
+st.sidebar.title("Filtros")
 
 # Buscar dados
 with st.spinner('Carregando dados...'):
@@ -76,152 +83,158 @@ with st.spinner('Carregando dados...'):
     df_tipo_mov = fetch_data(tipo_mov_url)
     df_imoveis = fetch_data(imoveis_url)
     df_contratos = fetch_data(contratos_url)
+    df_clientes = fetch_data(clientes_url)
 
-if all([df_caixa is not None, df_tipo_mov is not None, df_imoveis is not None, df_contratos is not None]):
+if all([df_caixa is not None, df_tipo_mov is not None, df_imoveis is not None, df_contratos is not None, df_clientes is not None]):
     # Criar dicionários de mapeamento
     tipo_mov_dict = dict(zip(df_tipo_mov['_id'], df_tipo_mov['descrição']))
     imoveis_dict = dict(zip(df_imoveis['_id'], df_imoveis['descricao']))
+    clientes_dict = dict(zip(df_clientes['_id'], df_clientes['nome']))
 
     # Mapear descrições
     df_caixa['tipo_mov_desc'] = df_caixa['tipo_mov'].map(tipo_mov_dict)
     df_caixa['imovel_desc'] = df_caixa['imovel'].map(imoveis_dict)
     df_caixa['data_mov'] = df_caixa['data_mov'].apply(safe_parse_date)
     df_caixa['valor'] = pd.to_numeric(df_caixa['valor'], errors='coerce')
+    df_contratos['cliente_nome'] = df_contratos['cliente'].map(clientes_dict)
 
     # Remover linhas com datas inválidas
     df_caixa = df_caixa.dropna(subset=['data_mov'])
 
-    # Título do Dashboard
-    st.title("Dashboard Financeiro e Imobiliário")
-
-    # Sidebar com filtros
-    st.sidebar.header("Filtros")
-
-    # Filtro de período
-    periodo_options = ["Todos", "Ano Atual", "Mês Atual", "Últimos 3 meses", "Últimos 6 meses", "Personalizado"]
-    periodo = st.sidebar.selectbox("Selecione período", periodo_options)
+    # Filtros no sidebar
+    periodo = st.sidebar.selectbox(
+        "Selecione período",
+        ["Todos", "Último mês", "Últimos 3 meses", "Últimos 6 meses", "Último ano", "Personalizado"]
+    )
 
     if periodo == "Personalizado":
-        start_date = st.sidebar.date_input("Data inicial", df_caixa['data_mov'].min())
-        end_date = st.sidebar.date_input("Data final", df_caixa['data_mov'].max())
-    elif periodo == "Ano Atual":
-        start_date = datetime(datetime.now().year, 1, 1)
-        end_date = datetime.now()
-    elif periodo == "Mês Atual":
-        start_date = datetime(datetime.now().year, datetime.now().month, 1)
-        end_date = datetime.now()
-    elif periodo == "Últimos 3 meses":
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=90)
-    elif periodo == "Últimos 6 meses":
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=180)
+        min_date = min(df_caixa['data_mov'].dt.date)
+        max_date = datetime.now().date()
+        start_date = st.sidebar.date_input("Data inicial", min_date, min_value=min_date, max_value=max_date)
+        end_date = st.sidebar.date_input("Data final", max_date, min_value=min_date, max_value=max_date)
     else:
-        start_date = df_caixa['data_mov'].min()
-        end_date = df_caixa['data_mov'].max()
+        end_date = datetime.now().date()
+        if periodo == "Último mês":
+            start_date = end_date - timedelta(days=30)
+        elif periodo == "Últimos 3 meses":
+            start_date = end_date - timedelta(days=90)
+        elif periodo == "Últimos 6 meses":
+            start_date = end_date - timedelta(days=180)
+        elif periodo == "Último ano":
+            start_date = end_date - timedelta(days=365)
+        else:
+            start_date = min(df_caixa['data_mov'].dt.date)
 
-    df_filtered = df_caixa[(df_caixa['data_mov'] >= pd.Timestamp(start_date)) & (df_caixa['data_mov'] <= pd.Timestamp(end_date))]
+    df_caixa_filtered = df_caixa[(df_caixa['data_mov'].dt.date >= start_date) & (df_caixa['data_mov'].dt.date <= end_date)]
 
-    # Métricas principais
-    col1, col2, col3, col4 = st.columns(4)
-    entrada_total = df_filtered[df_filtered['categoria'] == 'entrada']['valor'].sum()
-    saida_total = df_filtered[df_filtered['categoria'] == 'saida']['valor'].sum()
+    # Título do Dashboard
+    st.title("Dashboard Financeiro e Imobiliário")
+    st.write(f"Dados de {format_date(start_date)} até {format_date(end_date)}")
+
+    # Cálculos gerais
+    entrada_total = df_caixa_filtered[df_caixa_filtered['categoria'] == 'entrada']['valor'].sum()
+    saida_total = df_caixa_filtered[df_caixa_filtered['categoria'] == 'saida']['valor'].sum()
     saldo = entrada_total - saida_total
     contratos_ativos = len(df_contratos[df_contratos['ativo'] == True])
 
-    col1.metric("Entrada", f"R$ {format_currency(entrada_total)}")
-    col2.metric("Saída", f"R$ {format_currency(saida_total)}")
-    col3.metric("Saldo", f"R$ {format_currency(saldo)}")
-    col4.metric("Contratos ativos", contratos_ativos)
-
-    # Última atualização
-    st.markdown(f"**Última atualização:** {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+    # Exibir cards com resumo
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        create_card("Entrada", format_currency(entrada_total), "#E8F5E9")
+    with col2:
+        create_card("Saída", format_currency(saida_total), "#FFEBEE")
+    with col3:
+        create_card("Saldo", format_currency(saldo), "#E3F2FD")
+    with col4:
+        create_card("Contratos ativos", str(contratos_ativos), "#FFF3E0")
 
     # Lista de Imóveis
-    st.subheader("Lista de Imóveis")
-    imoveis_summary = df_filtered.groupby(['imovel_desc', 'categoria'])['valor'].sum().unstack(fill_value=0).reset_index()
-
-    # Ensure 'entrada' and 'saida' columns exist
-    if 'entrada' not in imoveis_summary.columns:
-        imoveis_summary['entrada'] = 0
-    if 'saida' not in imoveis_summary.columns:
-        imoveis_summary['saida'] = 0
-
-    imoveis_summary = imoveis_summary[['imovel_desc', 'entrada', 'saida']]
-    imoveis_summary.columns = ['Imóvel', 'Entrada', 'Saída']
+    st.subheader("Resumo por Imóvel")
+    imoveis_summary = df_caixa_filtered.groupby(['imovel_desc', 'categoria'])['valor'].sum().unstack(fill_value=0).reset_index()
+    imoveis_summary.columns = ['Descrição', 'Entrada', 'Saída']
     imoveis_summary['Saldo'] = imoveis_summary['Entrada'] - imoveis_summary['Saída']
-
-    # Adicionar linha de total
-    total_row = pd.DataFrame({
-        'Imóvel': ['Total'],
-        'Entrada': [imoveis_summary['Entrada'].sum()],
-        'Saída': [imoveis_summary['Saída'].sum()],
-        'Saldo': [imoveis_summary['Saldo'].sum()]
-    })
-    imoveis_summary = pd.concat([imoveis_summary, total_row], ignore_index=True)
-
-    st.dataframe(
-        imoveis_summary.style.format({
-            'Entrada': lambda x: f"R$ {format_currency(x)}",
-            'Saída': lambda x: f"R$ {format_currency(x)}",
-            'Saldo': lambda x: f"R$ {format_currency(x)}"
-        }).apply(lambda x: ['font-weight: bold' if x.name == len(imoveis_summary) - 1 else '' for _ in x], axis=1),
-        height=400
-    )
+    for col in ['Entrada', 'Saída', 'Saldo']:
+        imoveis_summary[col] = imoveis_summary[col].apply(format_currency)
+    st.dataframe(imoveis_summary, use_container_width=True)
 
     # Maiores despesas
     st.subheader("Maiores despesas")
-    maiores_despesas = df_filtered[df_filtered['categoria'] == 'saida'].groupby('tipo_mov_desc')['valor'].sum().sort_values(ascending=True).tail(10)
-    fig_despesas = go.Figure(go.Bar(
-        x=maiores_despesas.values,
-        y=maiores_despesas.index,
-        orientation='h',
-        marker_color='#FF4136',
-        text=[f"R$ {format_currency(x)}" for x in maiores_despesas.values],
-        textposition='auto'
-    ))
-    fig_despesas.update_layout(height=400, margin=dict(l=0, r=0, t=0, b=0))
+    maiores_despesas = df_caixa_filtered[df_caixa_filtered['categoria'] == 'saida'].groupby('tipo_mov_desc')['valor'].sum().sort_values(ascending=False).head(10)
+    fig_despesas = px.bar(maiores_despesas, x=maiores_despesas.index, y=maiores_despesas.values, 
+                          labels={'x': 'Tipo de Despesa', 'y': 'Valor Total'},
+                          title="Top 10 Maiores Despesas")
+    fig_despesas.update_traces(text=[format_currency(val) for val in maiores_despesas.values], textposition='outside')
+    fig_despesas.update_layout(yaxis_title="Valor Total (R$)")
     st.plotly_chart(fig_despesas, use_container_width=True)
 
-    # Faturamento e despesas ao decorrer do tempo
-    st.subheader("Faturamento e despesas ao decorrer do tempo")
+    # Faturamento e despesas ao decorrer dos dias
+    st.subheader("Faturamento e despesas mensais")
+    df_mensal = df_caixa_filtered.groupby([df_caixa_filtered['data_mov'].dt.to_period('M'), 'categoria'])['valor'].sum().unstack(fill_value=0)
+    df_mensal.index = df_mensal.index.astype(str)
+    fig_mensal = go.Figure()
+    fig_mensal.add_trace(go.Bar(x=df_mensal.index, y=df_mensal['entrada'], name='Entrada', marker_color='blue'))
+    fig_mensal.add_trace(go.Bar(x=df_mensal.index, y=df_mensal['saida'], name='Saída', marker_color='red'))
+    fig_mensal.update_layout(barmode='group', title="Faturamento e Despesas Mensais",
+                             xaxis_title="Mês", yaxis_title="Valor (R$)")
+    fig_mensal.update_traces(texttemplate='%{y:,.2f}', textposition='outside')
+    st.plotly_chart(fig_mensal, use_container_width=True)
 
-    if periodo in ["Mês Atual", "Personalizado"] and (end_date - start_date).days <= 31:
-        # Visualização diária
-        df_time = df_filtered.groupby(['data_mov', 'categoria'])['valor'].sum().unstack(fill_value=0).reset_index()
-        x_axis = df_time['data_mov'].dt.strftime('%d/%m/%Y')
-    elif periodo in ["Ano Atual", "Últimos 3 meses", "Últimos 6 meses", "Personalizado"]:
-        # Visualização mensal
-        df_time = df_filtered.groupby([df_filtered['data_mov'].dt.to_period('M'), 'categoria'])['valor'].sum().unstack(fill_value=0).reset_index()
-        df_time['data_mov'] = df_time['data_mov'].dt.to_timestamp()
-        x_axis = df_time['data_mov'].dt.strftime('%m/%Y')
+    # Informações sobre Contratos
+    st.subheader("Contratos Ativos")
+
+    if 'ativo' in df_contratos.columns and 'imovel' in df_contratos.columns:
+        contratos_ativos = df_contratos[df_contratos['ativo'] == True]
+
+        # Mesclar df_contratos com df_imoveis para obter valor_aluguel
+        contratos_summary = pd.merge(contratos_ativos, df_imoveis[['_id', 'descricao', 'valor_aluguel']], 
+                                     left_on='imovel', right_on='_id', how='left')
+
+        # Selecionar e renomear as colunas relevantes
+        columns_to_display = ['descricao', 'cliente_nome', 'valor_aluguel']
+        new_column_names = {
+            'descricao': 'Imóvel',
+            'cliente_nome': 'Cliente',
+            'valor_aluguel': 'Valor do Aluguel'
+        }
+
+        contratos_summary = contratos_summary[columns_to_display].rename(columns=new_column_names)
+        contratos_summary['Valor do Aluguel'] = contratos_summary['Valor do Aluguel'].apply(format_currency)
+
+        # Exibir o resumo dos contratos
+        st.dataframe(contratos_summary, use_container_width=True)
     else:
-        # Visualização anual
-        df_time = df_filtered.groupby([df_filtered['data_mov'].dt.year, 'categoria'])['valor'].sum().unstack(fill_value=0).reset_index()
-        x_axis = df_time['data_mov'].astype(str)
+        st.write("As colunas necessárias não estão presentes no DataFrame de contratos.")
 
-    # Ensure 'entrada' and 'saida' columns exist in df_time
-    if 'entrada' not in df_time.columns:
-        df_time['entrada'] = 0
-    if 'saida' not in df_time.columns:
-        df_time['saida'] = 0
+    # Mapa de Imóveis
+    st.subheader("Localização dos Imóveis")
+    df_imoveis['lat'] = df_imoveis['localização'].apply(lambda x: x['lat'] if isinstance(x, dict) else None)
+    df_imoveis['lon'] = df_imoveis['localização'].apply(lambda x: x['lng'] if isinstance(x, dict) else None)
+    df_imoveis['valor_aluguel_formatado'] = df_imoveis['valor_aluguel'].apply(format_currency)
 
-    fig_time = go.Figure()
-    fig_time.add_trace(go.Bar(x=x_axis, y=df_time['entrada'], name='Entrada', marker_color='#0074D9',
-                              text=[f"R$ {format_currency(x)}" for x in df_time['entrada']], textposition='auto'))
-    fig_time.add_trace(go.Bar(x=x_axis, y=df_time['saida'], name='Saída', marker_color='#FF4136',
-                              text=[f"R$ {format_currency(x)}" for x in df_time['saida']], textposition='auto'))
-    fig_time.update_layout(barmode='group', height=400)
-    st.plotly_chart(fig_time, use_container_width=True)
+    fig_map = px.scatter_mapbox(df_imoveis, 
+                                lat="lat", 
+                                lon="lon", 
+                                hover_name="descricao",
+                                hover_data={"valor_aluguel_formatado": True, "lat": False, "lon": False},
+                                zoom=10,
+                                color="valor_aluguel",
+                                size="valor_aluguel",
+                                color_continuous_scale=px.colors.sequential.Viridis,
+                                size_max=15,
+                                title="Localização e Valor de Aluguel dos Imóveis")
 
-    # Botões adicionais
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Despesas Avulsas"):
-            st.write("Funcionalidade de Despesas Avulsas a ser implementada")
-    with col2:
-        if st.button("Limpar Filtros"):
-            st.experimental_rerun()
+    fig_map.update_layout(mapbox_style="open-street-map")
+    fig_map.update_layout(height=600)
+    st.plotly_chart(fig_map, use_container_width=True)
 
 else:
     st.error("Não foi possível carregar todos os dados necessários. Por favor, verifique sua conexão e tente novamente.")
+
+# Botões adicionais
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("Despesas Avulsas"):
+        st.write("Funcionalidade de Despesas Avulsas a ser implementada")
+with col2:
+    if st.button("Limpar Filtros"):
+        st.experimental_rerun()
