@@ -36,6 +36,18 @@ def create_card(title, value, color="#FFF"):
         unsafe_allow_html=True
     )
 
+# Função para traduzir nomes de meses para português
+def traduzir_mes(mes):
+    meses = {
+        'January': 'Janeiro', 'February': 'Fevereiro', 'March': 'Março', 'April': 'Abril',
+        'May': 'Maio', 'June': 'Junho', 'July': 'Julho', 'August': 'Agosto',
+        'September': 'Setembro', 'October': 'Outubro', 'November': 'Novembro', 'December': 'Dezembro'
+    }
+    for en, pt in meses.items():
+        if en in mes:
+            return mes.replace(en, pt)
+    return mes
+
 @st.cache_data
 def fetch_data(api_url):
     all_results = []
@@ -173,15 +185,21 @@ if all([df_caixa is not None, df_tipo_mov is not None, df_imoveis is not None, d
     st.plotly_chart(fig_despesas, use_container_width=True)
 
     # Faturamento e despesas ao decorrer dos dias
-    st.subheader("Faturamento e despesas mensais")
+    st.subheader("Faturamento e Despesas Mensais")
     df_mensal = df_caixa_filtered.groupby([df_caixa_filtered['data_mov'].dt.to_period('M'), 'categoria'])['valor'].sum().unstack(fill_value=0)
-    df_mensal.index = df_mensal.index.astype(str)
+    df_mensal.index = df_mensal.index.strftime('%B %Y').map(traduzir_mes)
     fig_mensal = go.Figure()
     fig_mensal.add_trace(go.Bar(x=df_mensal.index, y=df_mensal['entrada'], name='Entrada', marker_color='green'))
     fig_mensal.add_trace(go.Bar(x=df_mensal.index, y=df_mensal['saida'], name='Saída', marker_color='red'))
-    fig_mensal.update_layout(barmode='group', title="Faturamento e Despesas Mensais",
-                             xaxis_title="Mês", yaxis_title="Valor (R$)")
-    fig_mensal.update_traces(texttemplate='%{y:,.2f}', textposition='outside')
+    fig_mensal.update_layout(
+        barmode='group',
+        title="Faturamento e Despesas Mensais",
+        xaxis_title="Mês",
+        yaxis_title="Valor (R$)",
+        legend_title="Categoria",
+        xaxis_tickangle=-45  # Inclina os rótulos para melhor legibilidade
+    )
+    fig_mensal.update_traces(texttemplate='R$ %{y:,.2f}', textposition='outside')
     st.plotly_chart(fig_mensal, use_container_width=True)
 
     # Informações sobre Contratos
