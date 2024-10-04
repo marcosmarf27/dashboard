@@ -19,7 +19,7 @@ def format_date(date):
     return date.strftime("%d/%m/%Y")
 
 # Função para criar um card
-def create_card(title, value, color="#FFF"):
+def create_card(title, value, color="#FFF", text_color="#333"):
     st.markdown(
         f"""
         <div style="
@@ -29,8 +29,8 @@ def create_card(title, value, color="#FFF"):
             margin: 10px 0px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         ">
-            <h3 style="color: #333; margin-bottom: 0; font-size: 18px;">{title}</h3>
-            <p style="color: #333; font-size: 24px; font-weight: bold; margin-top: 10px;">{value}</p>
+            <h3 style="color: {text_color}; margin-bottom: 0; font-size: 18px;">{title}</h3>
+            <p style="color: {text_color}; font-size: 24px; font-weight: bold; margin-top: 10px;">{value}</p>
         </div>
         """,
         unsafe_allow_html=True
@@ -159,13 +159,16 @@ if all([df_caixa is not None, df_tipo_mov is not None, df_imoveis is not None, d
     # Exibir cards com resumo
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        create_card("Entrada", format_currency(entrada_total), "#4CAF50")  # Verde para entrada
+        create_card("Entrada", format_currency(entrada_total), "#4CAF50", "#FFF")  # Verde para entrada
     with col2:
-        create_card("Saída", format_currency(saida_total), "#F44336")  # Vermelho para saída
+        create_card("Saída", format_currency(saida_total), "#F44336", "#FFF")  # Vermelho para saída
     with col3:
-        create_card("Saldo", format_currency(saldo), "#2196F3")  # Azul para saldo
+        if saldo >= 0:
+            create_card("Saldo", format_currency(saldo), "#4CAF50", "#FFF")  # Verde para saldo positivo
+        else:
+            create_card("Saldo", format_currency(saldo), "#F44336", "#FFF")  # Vermelho para saldo negativo
     with col4:
-        create_card("Contratos ativos", str(contratos_ativos), "#FFA726")  # Laranja para contratos
+        create_card("Contratos ativos", str(contratos_ativos), "#FFA726", "#FFF")  # Laranja para contratos
 
     # Lista de Imóveis
     st.subheader("Resumo por Imóvel")
