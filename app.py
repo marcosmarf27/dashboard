@@ -121,7 +121,7 @@ if all([df_caixa is not None, df_tipo_mov is not None, df_imoveis is not None, d
     # Filtros no sidebar
     periodo = st.sidebar.selectbox(
         "Selecione período",
-        ["Todos", "Último mês", "Últimos 3 meses", "Últimos 6 meses", "Último ano", "Personalizado"]
+        ["Todos", "Mês atual", "Último mês", "Últimos 3 meses", "Últimos 6 meses", "Último ano", "Personalizado"]
     )
 
     if periodo == "Personalizado":
@@ -131,7 +131,9 @@ if all([df_caixa is not None, df_tipo_mov is not None, df_imoveis is not None, d
         end_date = st.sidebar.date_input("Data final", max_date, min_value=min_date, max_value=max_date, format="DD/MM/YYYY")
     else:
         end_date = datetime.now().date()
-        if periodo == "Último mês":
+        if periodo == "Mês atual":
+            start_date = end_date.replace(day=1)
+        elif periodo == "Último mês":
             start_date = end_date - timedelta(days=30)
         elif periodo == "Últimos 3 meses":
             start_date = end_date - timedelta(days=90)
@@ -139,7 +141,7 @@ if all([df_caixa is not None, df_tipo_mov is not None, df_imoveis is not None, d
             start_date = end_date - timedelta(days=180)
         elif periodo == "Último ano":
             start_date = end_date - timedelta(days=365)
-        else:
+        else:  # "Todos"
             start_date = min(df_caixa['data_mov'].dt.date)
 
     df_caixa_filtered = df_caixa[(df_caixa['data_mov'].dt.date >= start_date) & (df_caixa['data_mov'].dt.date <= end_date)]
@@ -168,10 +170,19 @@ if all([df_caixa is not None, df_tipo_mov is not None, df_imoveis is not None, d
     # Lista de Imóveis
     st.subheader("Resumo por Imóvel")
     imoveis_summary = df_caixa_filtered.groupby(['imovel_desc', 'categoria'])['valor'].sum().unstack(fill_value=0).reset_index()
-    imoveis_summary.columns = ['Descrição', 'Entrada', 'Saída']
+
+    # Ensure all necessary columns exist
+    for col in ['entrada', 'saida']:
+        if col not in imoveis_summary.columns:
+            imoveis_summary[col] = 0
+
+    imoveis_summary = imoveis_summary.rename(columns={'entrada': 'Entrada', 'saida': 'Saída'})
     imoveis_summary['Saldo'] = imoveis_summary['Entrada'] - imoveis_summary['Saída']
+    imoveis_summary = imoveis_summary.rename(columns={'imovel_desc': 'Descrição'})
+
     for col in ['Entrada', 'Saída', 'Saldo']:
         imoveis_summary[col] = imoveis_summary[col].apply(format_currency)
+
     st.dataframe(imoveis_summary, use_container_width=True)
 
     # Maiores despesas
@@ -253,6 +264,3 @@ if all([df_caixa is not None, df_tipo_mov is not None, df_imoveis is not None, d
 else:
     st.error("Não foi possível carregar todos os dados necessários. Por favor, verifique sua conexão e tente novamente.")
 
-# Botão Despesas Avulsas
-if st.sidebar.button("Despesas Avulsas"):
-    st.sidebar.write("Funcionalidade de Despesas Avulsas a ser implementada")
