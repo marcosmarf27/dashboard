@@ -116,7 +116,7 @@ if all([df_caixa is not None, df_tipo_mov is not None, df_imoveis is not None, d
     df_contratos['cliente_nome'] = df_contratos['cliente'].map(clientes_dict)
 
     # Remover linhas com datas inválidas
-    df_caixa = df_caixa.dropna(subset=['data_mov'])
+
 
     # Filtros no sidebar
     periodo = st.sidebar.selectbox(
@@ -125,8 +125,8 @@ if all([df_caixa is not None, df_tipo_mov is not None, df_imoveis is not None, d
     )
 
     if periodo == "Personalizado":
-        min_date = min(df_caixa['data_mov'].dt.date)
-        max_date = datetime.now().date()
+        min_date = df_caixa['data_mov'].min().date()
+        max_date = df_caixa['data_mov'].max().date()
         start_date = st.sidebar.date_input("Data inicial", min_date, min_value=min_date, max_value=max_date, format="DD/MM/YYYY")
         end_date = st.sidebar.date_input("Data final", max_date, min_value=min_date, max_value=max_date, format="DD/MM/YYYY")
     else:
@@ -142,13 +142,20 @@ if all([df_caixa is not None, df_tipo_mov is not None, df_imoveis is not None, d
         elif periodo == "Último ano":
             start_date = end_date - timedelta(days=365)
         else:  # "Todos"
-            start_date = min(df_caixa['data_mov'].dt.date)
+            start_date = df_caixa['data_mov'].min().date()
+            end_date = df_caixa['data_mov'].max().date()
 
-    df_caixa_filtered = df_caixa[(df_caixa['data_mov'].dt.date >= start_date) & (df_caixa['data_mov'].dt.date <= end_date)]
+    if periodo != "Todos":
+        df_caixa_filtered = df_caixa[(df_caixa['data_mov'].dt.date >= start_date) & (df_caixa['data_mov'].dt.date <= end_date)]
+    else:
+        df_caixa_filtered = df_caixa
 
     # Título do Dashboard
     st.title("Dashboard Financeiro e Imobiliário")
-    st.write(f"Dados de {format_date(start_date)} até {format_date(end_date)}")
+    if periodo != "Todos":
+        st.write(f"Dados de {format_date(start_date)} até {format_date(end_date)}")
+    else:
+        st.write("Mostrando todos os dados disponíveis")
 
     # Cálculos gerais
     entrada_total = df_caixa_filtered[df_caixa_filtered['categoria'] == 'entrada']['valor'].sum()
